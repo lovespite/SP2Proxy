@@ -64,7 +64,8 @@ public class Channel : DuplexStream
 
             var frame = Frame.Build(chunk, Cid);
 
-            _host.EnqueueOut(frame);
+            // _host.EnqueueOut(frame);
+            await _host.EnqueueOutAsync(frame, cancellationToken);
             currentOffset += chunkSize;
         }
 

@@ -235,6 +235,32 @@ public class SerialPort2 : IDisposable
         _outgoingQueue.Enqueue(frame);
     }
 
+    public int BackpressureThreshold { get; set; } = 100;
+
+    /// <summary>
+    /// 异步地将一个数据帧排入发送队列，并支持背压反馈。
+    /// 如果发送队列已满（超过 BackpressureThreshold），此方法将异步等待直到队列有可用空间。
+    /// </summary>
+    /// <param name="frame">要发送的数据帧。</param>
+    /// <param name="cancellationToken">用于取消等待操作的取消令牌。</param>
+    /// <returns>表示异步操作的任务。</returns>
+    public async Task EnqueueOutAsync(Frame frame, CancellationToken cancellationToken = default)
+    {
+        // 当背压（发送队列中的项目数）大于或等于阈值时，进行等待。
+        while (BackPressure >= BackpressureThreshold)
+        {
+            // 检查外部是否已请求取消操作。
+            cancellationToken.ThrowIfCancellationRequested();
+
+            // 异步等待一小段时间（例如10毫秒），让出CPU，
+            // 以便 SendDataAsync 任务可以继续处理和清空队列。
+            await Task.Delay(10, cancellationToken);
+        }
+
+        // 队列有空间了，将帧放入队列。
+        _outgoingQueue.Enqueue(frame);
+    }
+
     public void EnqueueOutControlFrame(Frame ctlFrame)
     {
         _controlQueue.Enqueue(ctlFrame);
