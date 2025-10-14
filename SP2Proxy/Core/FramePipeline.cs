@@ -19,16 +19,18 @@ public class FramePipeline
             // 等待管道中有数据可读
             ReadResult result = await _pipe.Reader.ReadAsync();
             ReadOnlySequence<byte> buffer = result.Buffer;
+            SequencePosition consumed = buffer.Start;
+            SequencePosition examined = buffer.End;
 
             // 持续解析，直到缓冲区中没有完整的帧
-            while (TryReadFrame(ref buffer, out ReadOnlyMemory<byte> frame))
+            while (TryReadFrame(ref buffer, out ReadOnlyMemory<byte> frame, out SequencePosition frameEnd))
             {
                 yield return frame;
+                consumed = frameEnd;
             }
 
             // 告诉管道我们已经检查了多少数据，以及消费了多少
-            // buffer 的起始位置可能已经因为 TryReadFrame 的调用而改变
-            _pipe.Reader.AdvanceTo(buffer.Start, buffer.End);
+            _pipe.Reader.AdvanceTo(consumed, examined);
 
             // 如果读取被取消或管道已完成，则退出
             if (result.IsCanceled || result.IsCompleted)
@@ -38,42 +40,45 @@ public class FramePipeline
         }
     }
 
-    private static bool TryReadFrame(ref ReadOnlySequence<byte> buffer, out ReadOnlyMemory<byte> frame)
+    private static bool TryReadFrame(ref ReadOnlySequence<byte> buffer, out ReadOnlyMemory<byte> frame, out SequencePosition frameEnd)
     {
         frame = default;
+        frameEnd = buffer.Start;
 
         // 使用 SequenceReader 来高效地操作 ReadOnlySequence<byte>
         var reader = new SequenceReader<byte>(buffer);
 
         // 1. 查找起始符
-        if (!reader.TryReadTo(out ReadOnlySpan<byte> _, Frame.ByteFlagBeg, advancePastDelimiter: true))
+        if (!reader.TryReadTo(out ReadOnlySpan<byte> _, Frame.ByteFlagBeg, advancePastDelimiter: false))
         {
-            // 没有找到起始符，这部分数据可以丢弃
-            // 我们通过将整个缓冲区标记为已检查来“丢弃”它
-            buffer = buffer.Slice(buffer.End);
+            // 没有找到起始符，整个缓冲区都可以丢弃
+            buffer = ReadOnlySequence<byte>.Empty;
             return false;
         }
+
+        // 记住起始符的位置
+        var startPosition = reader.Position;
+
+        // 跳过起始符
+        reader.Advance(1);
 
         // 2. 查找结束符
         if (!reader.TryReadTo(out ReadOnlySequence<byte> frameSequence, Frame.ByteFlagEnd, advancePastDelimiter: true))
         {
             // 找到了起始符，但没有找到结束符，需要更多数据
-            // 将 buffer 的起始位置移到起始符的位置，等待下一次数据到来
-            // 注意：我们已经在上面 advancePastDelimiter: true 了，所以当前 reader.Position 就是起始符之后
-            buffer = buffer.Slice(reader.Position);
-            // 由于上面已经越过了起始符，所以需要回退一个位置
-            buffer = buffer.Slice(buffer.GetPosition(-1, buffer.Start));
+            // 保留从起始符开始的所有数据
+            buffer = buffer.Slice(startPosition);
             return false;
         }
 
         // 3. 成功找到一个完整的帧
-        // frameSequence 现在包含了起始符和结束符之间的数据
-        // 注意：如果帧数据可能跨越多个内存块，ToArray() 会将其合并。
-        // 如果能直接处理 ReadOnlySequence<byte>，可以避免这次分配。
+        // frameSequence 现在包含了起始符和结束符之间的数据（不包括标志符本身）
+        // 这与 FrameParser 的行为保持一致
         frame = frameSequence.ToArray();
+        frameEnd = reader.Position;
 
         // 4. 更新 buffer，使其指向已处理数据的末尾
-        buffer = buffer.Slice(reader.Position);
+        buffer = buffer.Slice(frameEnd);
 
         return true;
     }

@@ -16,7 +16,11 @@ public class SerialPort2 : IDisposable
     private readonly ConcurrentQueue<Frame> _outgoingQueue = new();
     private readonly ConcurrentQueue<Frame> _controlQueue = new();
 
-    private readonly FrameParser _parser = new FrameParser();
+    //private readonly FrameParser _parser = new();
+    //private readonly ConcurrentQueue<IReadOnlyList<byte[]>> _frameBytes = new();
+
+    private readonly FramePipeline _pipe = new();
+
     private CancellationTokenSource _cancellationTokenSource = new();
 
     public event FrameReceivedHandler OnFrameReceived;
@@ -29,6 +33,10 @@ public class SerialPort2 : IDisposable
 
     public ulong TrafficIn { get; private set; }
     public ulong TrafficOut { get; private set; }
+
+    public ulong FramesIn { get; private set; }
+    public ulong FramesOut { get; private set; }
+
 
     private Task TrafficInCount(SerialPort2 port, Frame frame)
     {
@@ -55,7 +63,9 @@ public class SerialPort2 : IDisposable
         _isStarted = true;
 
         Task.Run(ReceiveDataAsync, _cancellationTokenSource.Token);
-        Task.Run(DispatchFrameAsync, _cancellationTokenSource.Token);
+        Task.Run(ParseFramesAsync, _cancellationTokenSource.Token);
+        Task.Run(DispatchFramesAsync, _cancellationTokenSource.Token);
+
         Task.Run(SendDataAsync, _cancellationTokenSource.Token);
     }
 
@@ -78,12 +88,10 @@ public class SerialPort2 : IDisposable
                 int bytesRead = await _baseport.BaseStream.ReadAsync(incomingBuffer, _cancellationTokenSource.Token);
                 if (bytesRead <= 0) continue;
 
-                var frames = _parser.Parse(incomingBuffer[..bytesRead].Span);
+                //var frameBytes = _parser.Parse(incomingBuffer.Span[..bytesRead]);
+                //_frameBytes.Enqueue(frameBytes);
 
-                foreach (var frameData in frames)
-                {
-                    _incomingQueue.Enqueue(Frame.Parse(frameData));
-                }
+                await _pipe.Writer.WriteAsync(incomingBuffer[..bytesRead], _cancellationTokenSource.Token);
             }
             catch (OperationCanceledException)
             {
@@ -95,13 +103,8 @@ public class SerialPort2 : IDisposable
                 Console.WriteLine($"[PPH] I/O operation aborted on {Path}: {ex.Message}");
                 break;
             }
-            catch (IOException ex)
+            catch (IOException)
             {
-
-#if DEBUG 
-                Debug.WriteLine($"[PPH] I/O error on {Path}: {ex.Message}");
-#endif
-
                 // 检查串口状态
                 if (!_baseport.IsOpen) break;
             }
@@ -112,30 +115,75 @@ public class SerialPort2 : IDisposable
             }
         }
 
+        await _pipe.Writer.CompleteAsync();
         Console.WriteLine($"[PPH] Receive task ended for {Path}");
     }
 
-    private async Task DispatchFrameAsync()
+    private async Task ParseFramesAsync()
+    {
+        await foreach (var frame in _pipe.ParseFramesAsync())
+        {
+            if (_cancellationTokenSource.IsCancellationRequested) break;
+
+            try
+            {
+                _incomingQueue.Enqueue(Frame.Parse(frame.Span));
+                ++FramesIn;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[PPH] Error parsing frame on {Path}: {ex.Message}");
+            }
+        }
+    }
+
+    //private async Task ParseFramesAsync()
+    //{
+    //    while (!_cancellationTokenSource.IsCancellationRequested)
+    //    {
+    //        if (!_frameBytes.TryDequeue(out var frames))
+    //        {
+    //            await Task.Delay(1); // 队列为空时短暂等待
+    //            continue;
+    //        }
+
+    //        foreach (var frame in frames)
+    //        {
+    //            try
+    //            {
+    //                _incomingQueue.Enqueue(Frame.Parse(frame));
+    //                ++FramesIn;
+    //            }
+    //            catch (Exception ex)
+    //            {
+    //                Console.WriteLine($"[PPH] Error parsing frame on {Path}: {ex.Message}");
+    //            }
+    //        }
+    //    }
+    //}
+
+    private async Task DispatchFramesAsync()
     {
         while (!_cancellationTokenSource.IsCancellationRequested)
         {
-            if (_incomingQueue.TryDequeue(out var frame))
-            {
-                if (OnFrameReceived is not null)
-                {
-                    try
-                    {
-                        await OnFrameReceived.Invoke(this, frame);
-                    }
-                    catch (Exception ex)
-                    {
-                        Console.WriteLine($"[PPH] Error in OnFrameReceived handler: {ex.Message}");
-                    }
-                }
-            }
-            else
+            if (!_incomingQueue.TryDequeue(out var frame))
             {
                 await Task.Delay(1); // 队列为空时短暂等待
+                continue;
+            }
+
+            if (OnFrameReceived is null)
+            {
+                continue;
+            }
+
+            try
+            {
+                await OnFrameReceived.Invoke(this, frame);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[PPH] Error dispatching frame on {Path}: {ex.Message}");
             }
         }
     }
@@ -146,25 +194,38 @@ public class SerialPort2 : IDisposable
         Memory<byte> outgoingBuffer = new byte[Frame.StackBufferSize];
         while (!_cancellationTokenSource.IsCancellationRequested)
         {
-            if (_controlQueue.TryDequeue(out var frame) // 优先发送控制消息
-                || _outgoingQueue.TryDequeue(out frame))
-            {
-                try
-                {
-                    var size = FrameUtils.Pack(frame, outgoingBuffer.Span);
-                    await _baseport.BaseStream.WriteAsync(outgoingBuffer[..size], _cancellationTokenSource.Token);
-                    await _baseport.BaseStream.FlushAsync(_cancellationTokenSource.Token);
-
-                    TrafficOut += (ulong)size;
-                }
-                catch (OperationCanceledException)
-                {
-                    break;
-                }
-            }
-            else
+            if (!_controlQueue.TryDequeue(out var frame) // 优先发送控制消息
+                && !_outgoingQueue.TryDequeue(out frame))
             {
                 await Task.Delay(1); // 队列为空时短暂等待
+                continue;
+            }
+
+            try
+            {
+                // 将帧数据封包到发送缓冲区
+                var size = FrameUtils.Pack(frame, outgoingBuffer.Span);
+
+                // 发送数据
+                await _baseport.BaseStream.WriteAsync(outgoingBuffer[..size], _cancellationTokenSource.Token);
+                await _baseport.BaseStream.FlushAsync(_cancellationTokenSource.Token);
+
+                TrafficOut += (ulong)size;
+                ++FramesOut;
+            }
+            catch (IOException)
+            {
+                if (!_baseport.IsOpen) break;
+            }
+            catch (OperationCanceledException)
+            {
+                break;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[PPH] Unexpected send error on {Path}: {ex.GetType().Name}: {ex.Message}");
+
+                await Task.Delay(1, _cancellationTokenSource.Token);
             }
         }
     }

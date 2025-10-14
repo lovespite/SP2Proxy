@@ -79,7 +79,7 @@ public class HostServer
             var host = hostAndPort[0];
             var port = int.Parse(hostAndPort[1]);
 
-            Console.WriteLine($"[HostServer/Http] Received request: \n{host}:{port}");
+            Console.WriteLine($"[HostServer/Http] Received request: {host}:{port}");
             await ForwardConnectionAsync(client, host, port, 0);
         }
         else

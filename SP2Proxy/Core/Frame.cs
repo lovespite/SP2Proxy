@@ -2,6 +2,16 @@
 using SP2Proxy.Utils;
 
 namespace SP2Proxy.Core;
+
+public enum FrameState: byte
+{
+    Idle = 0,
+    Queued = 1,
+    Processed = 2,
+    Failed = 3,
+    Discarded = 4,
+}
+
 public record Frame
 {
     public const int MetaSize = 16; // 8 for channelId, 8 for length
@@ -14,6 +24,7 @@ public record Frame
 
     public long ChannelId { get; init; }
     public Memory<byte> Payload { get; set; } = Memory<byte>.Empty;
+    public FrameState State { get; set; } = FrameState.Idle;
 
     public static Frame Empty(long cid) => new() { ChannelId = cid, Payload = Memory<byte>.Empty };
 

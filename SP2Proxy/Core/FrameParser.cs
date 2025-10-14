@@ -1,7 +1,7 @@
 namespace SP2Proxy.Core;
 
 // 从字节流中解析出完整的数据帧
-public class FrameParser : IFrameParser
+public class FrameParser
 {
     private byte[] _buffer = [];
 

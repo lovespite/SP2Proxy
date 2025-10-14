@@ -11,21 +11,18 @@ public class ChannelManager : IChannelFactory
     public SerialPort2[] Hosts => _hosts;
     public ControllerChannel Controller { get; }
 
-    public ChannelManager(SerialPort2 primaryHost)
-    {
-        _hosts = [primaryHost];
-        Controller = new ControllerChannel(primaryHost, this);
-        primaryHost.OnFrameReceived += DispatchFrameAsync;
-    }
-
     public ChannelManager(SerialPort2[] hosts)
     {
         _hosts = hosts;
         Controller = new ControllerChannel(hosts[0], this);
         foreach (var host in hosts)
         {
-            host.OnFrameReceived += DispatchFrameAsync;
+            host.OnFrameReceived += DispatchFramesAsync;
         }
+    }
+
+    public ChannelManager(SerialPort2 primaryHost) : this([primaryHost])
+    {
     }
 
     private SerialPort2 BestHost
@@ -38,7 +35,7 @@ public class ChannelManager : IChannelFactory
         }
     }
 
-    private async Task DispatchFrameAsync(SerialPort2 port, Frame frame)
+    private async Task DispatchFramesAsync(SerialPort2 port, Frame frame)
     {
         if (frame.ChannelId == 0)
         {
@@ -52,7 +49,7 @@ public class ChannelManager : IChannelFactory
         }
         else
         {
-            Console.WriteLine($"[ChnMan] Frame dropped: Channel <{frame.ChannelId}> not found.");
+            Console.WriteLine($"[ChannelRouter] Frame dropped: Channel <{frame.ChannelId}> not found.");
         }
     }
 
