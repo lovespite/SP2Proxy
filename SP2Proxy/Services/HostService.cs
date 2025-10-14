@@ -120,9 +120,9 @@ public class HostServer
 
             // 发送连接请求
             await _channelManager.Controller.CallRemoteProcAsync(msg);
-            // 双向数据转发
             var clientStream = client.GetStream();
             
+            // 双向数据转发
             var pipe = Task.WhenAll(
                 clientStream.CopyToAsync(channel),
                 channel.CopyToAsync(clientStream)
