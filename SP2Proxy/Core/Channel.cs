@@ -20,46 +20,15 @@ public class Channel : DuplexStream
         _onClose = onClose;
     }
 
-    //// 从管道读取数据
-    //public override async Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
-    //{
-    //    var result = await _incomingData.Reader.ReadAsync(cancellationToken);
-    //    var readableBuffer = result.Buffer;
-    //    var len = Math.Min((int)readableBuffer.Length, count);
-    //    readableBuffer.Slice(0, len).CopyTo(buffer.AsSpan(offset));
-    //    _incomingData.Reader.AdvanceTo(readableBuffer.GetPosition(len));
-    //    return len;
-    //}
-
-    // 优先实现这个 Memory<byte> 的重载
-    public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+    // 从管道读取数据
+    public override async Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
     {
         var result = await _incomingData.Reader.ReadAsync(cancellationToken);
         var readableBuffer = result.Buffer;
-
-        // 计算实际可以拷贝的长度
-        var len = (int)Math.Min(readableBuffer.Length, buffer.Length);
-        if (len == 0)
-        {
-            // 如果缓冲区为空且读取已完成，返回0表示流结束
-            return result.IsCompleted ? 0 : len;
-        }
-
-        // 从管道的缓冲区拷贝到目标 buffer
-        var slice = readableBuffer.Slice(0, len);
-        slice.CopyTo(buffer.Span);
-
-        // 告知管道我们已经处理了多少数据
-        _incomingData.Reader.AdvanceTo(slice.End);
-
+        var len = Math.Min((int)readableBuffer.Length, count);
+        readableBuffer.Slice(0, len).CopyTo(buffer.AsSpan(offset));
+        _incomingData.Reader.AdvanceTo(readableBuffer.GetPosition(len));
         return len;
-    }
-
-    // 旧的重载可以调用新的重载来保持兼容性
-    public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
-    {
-        // 调用更现代的 Memory<T> 重载
-        return ReadAsync(buffer.AsMemory(offset, count), cancellationToken).AsTask();
     }
 
     // 将数据分片、打包成帧并发送 

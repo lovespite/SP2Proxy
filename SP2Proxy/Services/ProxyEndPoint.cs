@@ -50,14 +50,17 @@ public class ProxyEndPoint
 
             var remoteStream = remoteClient.GetStream();
 
-            await Task.WhenAll(
-                channel.CopyToAsync(remoteStream),
-                remoteStream.CopyToAsync(channel)
-            );
-
-            channel.Close();
-            remoteClient.Close();
-            Console.WriteLine($"[ProxyEndPoint] Connection to {host}:{port} closed for channel <{cid}>");
+            // 双向转发
+            _ = Task.Run(async () =>
+            {
+                await channel.CopyToAsync(remoteStream);
+                remoteClient.Close();
+            });
+            _ = Task.Run(async () =>
+            {
+                await remoteStream.CopyToAsync(channel);
+                channel.Close();
+            });
 
         }
         catch (Exception ex)
