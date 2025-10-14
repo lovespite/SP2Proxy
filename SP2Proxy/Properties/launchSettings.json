@@ -1,0 +1,20 @@
+{
+  "profiles": {
+    "SP2Proxy Host": {
+      "commandName": "Project",
+      "commandLineArgs": "host -s=COM10 -b=4000000 -5 -p=11234 \"-l=127.0.0.1\""
+    },
+    "SP2Proxy Proxy": {
+      "commandName": "Project",
+      "commandLineArgs": "proxy -s=COM9 -b=4000000"
+    },
+    "Test": {
+      "commandName": "Project",
+      "commandLineArgs": "test -s=COM9 -b=4000000"
+    },
+    "TestProxy": {
+      "commandName": "Project",
+      "commandLineArgs": "test-proxy -s=COM9 -s=COM10 -b=4000000 -b=4000000 -5 -p=11234 \"-l=127.0.0.1\""
+    }
+  }
+}

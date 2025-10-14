@@ -1,0 +1,31 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.14.36518.9
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SP2Proxy", "SP2Proxy\SP2Proxy.csproj", "{ABDF2F9C-B34E-8CEA-252D-DE99F5D03B27}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SP2ProxyTests", "SP2ProxyTests\SP2ProxyTests.csproj", "{6CE5DA68-4DFD-B637-0FE2-C53F2F7D251B}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{ABDF2F9C-B34E-8CEA-252D-DE99F5D03B27}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{ABDF2F9C-B34E-8CEA-252D-DE99F5D03B27}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{ABDF2F9C-B34E-8CEA-252D-DE99F5D03B27}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{ABDF2F9C-B34E-8CEA-252D-DE99F5D03B27}.Release|Any CPU.Build.0 = Release|Any CPU
+		{6CE5DA68-4DFD-B637-0FE2-C53F2F7D251B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{6CE5DA68-4DFD-B637-0FE2-C53F2F7D251B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{6CE5DA68-4DFD-B637-0FE2-C53F2F7D251B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{6CE5DA68-4DFD-B637-0FE2-C53F2F7D251B}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {0B5A2F2C-E1B1-4A47-8B62-85CAE89ABFF8}
+	EndGlobalSection
+EndGlobal
