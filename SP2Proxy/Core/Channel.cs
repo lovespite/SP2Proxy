@@ -114,5 +114,6 @@ public abstract class DuplexStream : Stream
 
 public interface IChannelFactory
 {
-    Channel NewChannel(long? id = null);
+    Channel NewChannel(long cid);
+    Channel NewChannel();
 }

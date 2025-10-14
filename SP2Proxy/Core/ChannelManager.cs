@@ -53,13 +53,17 @@ public class ChannelManager : IChannelFactory
         }
     }
 
-    public Channel NewChannel(long? id = null)
+    private static long _globalCid = 1;
+    public static long NextCid() => Interlocked.Increment(ref _globalCid);
+
+    public Channel NewChannel(long cid)
     {
-        long cid = id ?? ((long)DateTime.UtcNow.Ticks << 16) ^ Random.Shared.NextInt64(0xFFFF);
         var channel = new Channel(cid, BestHost, Kill);
         _channels.TryAdd(cid, channel);
         return channel;
     }
+
+    public Channel NewChannel() => NewChannel(NextCid());
 
     public void Kill(Channel channel, int code)
     {
