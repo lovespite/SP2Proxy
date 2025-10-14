@@ -109,7 +109,7 @@ public class HostServer
 
             if (cid == -1) throw new Exception("Failed to get channel ID from remote.");
 
-            var channel = _channelManager.NewChannel(cid) ?? throw new Exception("Channel not created locally.");
+            var channel = _channelManager.NewChannel(cid);
 
             Console.WriteLine($"[Channel/Socket] {channel.Path} <{channel.Cid:x8}> chn. established for {host}:{port}.");
 
@@ -120,9 +120,8 @@ public class HostServer
 
             // 发送连接请求
             await _channelManager.Controller.CallRemoteProcAsync(msg);
-            // 双向数据转发
             var clientStream = client.GetStream();
-            
+
             var pipe = Task.WhenAll(
                 clientStream.CopyToAsync(channel),
                 channel.CopyToAsync(clientStream)
@@ -136,6 +135,9 @@ public class HostServer
             }
 
             await pipe;
+
+            await channel.CloseAsync();
+            Console.WriteLine($"[Channel/Socket] Pipe closed for {host}:{port}.");
         }
         catch (Exception ex)
         {

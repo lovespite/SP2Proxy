@@ -103,10 +103,11 @@ public class SerialPort2 : IDisposable
                 Console.WriteLine($"[PPH] I/O operation aborted on {Path}: {ex.Message}");
                 break;
             }
-            catch (IOException)
+            catch (IOException ex)
             {
                 // 检查串口状态
                 if (!_baseport.IsOpen) break;
+                else Console.WriteLine($"[PPH] I/O error on {Path}: {ex.Message}");
             }
             catch (Exception ex)
             {
@@ -135,6 +136,8 @@ public class SerialPort2 : IDisposable
                 Console.WriteLine($"[PPH] Error parsing frame on {Path}: {ex.Message}");
             }
         }
+
+        Console.WriteLine($"[PPH] Parse task ended for {Path}");
     }
 
     //private async Task ParseFramesAsync()
@@ -208,7 +211,7 @@ public class SerialPort2 : IDisposable
 
                 // 发送数据
                 await _baseport.BaseStream.WriteAsync(outgoingBuffer[..size], _cancellationTokenSource.Token);
-                await _baseport.BaseStream.FlushAsync(_cancellationTokenSource.Token);
+                // await _baseport.BaseStream.FlushAsync(_cancellationTokenSource.Token);
 
                 TrafficOut += (ulong)size;
                 ++FramesOut;

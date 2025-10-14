@@ -11,7 +11,7 @@ public delegate Task ConnectRequestHandler(ControlMessage msg);
 public class ControllerChannel : Channel
 {
     private readonly IChannelFactory _factory;
-    private readonly ConcurrentDictionary<Guid, TaskCompletionSource<ControlMessage>> _pendingRpcs = new();
+    private readonly ConcurrentDictionary<long, TaskCompletionSource<ControlMessage>> _pendingRpcs = new();
 
     public ControllerChannel(SerialPort2 host, IChannelFactory factory) : base(0, host, (c, code) => { })
     {

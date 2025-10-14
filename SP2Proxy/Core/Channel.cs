@@ -1,5 +1,6 @@
 using System.Buffers;
 using System.IO.Pipelines;
+using System.Threading.Tasks;
 
 namespace SP2Proxy.Core;
 // 代表一个虚拟信道，继承自 .NET 的 Stream
@@ -9,6 +10,7 @@ public class Channel : DuplexStream
 
     private readonly Pipe _incomingData = new();
     private readonly Action<Channel, int> _onClose;
+    public bool IsAlive { get; private set; } = true;
 
     public long Cid { get; }
     public string Path => _host.Path;
@@ -83,13 +85,18 @@ public class Channel : DuplexStream
         await _incomingData.Writer.WriteAsync(data);
     }
 
-    public override void Close()
+    public async Task CloseAsync()
     {
+        if (!IsAlive) return;
+        IsAlive = false;
+
         // 发送一个空帧来通知对方信道已关闭 
         _host.EnqueueOut(Frame.Empty(Cid));
         _onClose(this, 0); // 触发关闭回调
-        _incomingData.Writer.Complete();
-        _incomingData.Reader.Complete();
+
+        await _incomingData.Writer.CompleteAsync();
+        await _incomingData.Reader.CompleteAsync();
+
         base.Close();
     }
 

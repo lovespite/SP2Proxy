@@ -1,10 +1,14 @@
 using SP2Proxy.Utils;
+using System.Collections.Concurrent;
 using System.IO.Compression;
 
 namespace SP2Proxy.Core;
 
 public class ControlMessage : Map
 {
+    private static long _globalTk = 0;
+    private static long NextTk() => Interlocked.Increment(ref _globalTk);
+
     public static ControlMessage From(ReadOnlySpan<byte> bytes)
     {
         var map = Deserialize(bytes);
@@ -14,10 +18,10 @@ public class ControlMessage : Map
     public enum Flags : byte { Unset = 0, Control = 1, Callback = 2 }
     public enum Commands : byte { Unset, Establish, Dispose, Connect, Request }
 
-    public Guid Tk
+    public long Tk
     {
         private init => Set(value);
-        get => (Guid)Get();
+        get => (long)Get();
     }
 
     public Commands Cmd
@@ -44,7 +48,7 @@ public class ControlMessage : Map
         return this;
     }
 
-    public ControlMessage(Guid tk, Commands cmd, Flags flag, object? data = null)
+    public ControlMessage(long tk, Commands cmd, Flags flag, object? data = null)
     {
         Tk = tk;
         Cmd = cmd;
@@ -52,14 +56,14 @@ public class ControlMessage : Map
         Data = data ?? string.Empty;
     }
 
-    public ControlMessage() : this(Guid.NewGuid(), Commands.Unset, Flags.Unset, string.Empty)
+    public ControlMessage() : this(NextTk(), Commands.Unset, Flags.Unset, string.Empty)
     {
     }
 
     public ControlMessage(Map basemap) : base(basemap, MapFlags.None)
     {
         if (!Has(nameof(Tk)))
-            Tk = Guid.NewGuid();
+            Tk = NextTk();
 
         if (!Has(nameof(Cmd)))
             Cmd = Commands.Unset;
@@ -71,7 +75,7 @@ public class ControlMessage : Map
             Data = string.Empty;
     }
 
-    public static ControlMessage Callback(Guid tk)
+    public static ControlMessage Callback(long tk)
     {
         return new ControlMessage(tk, Commands.Unset, Flags.Callback, string.Empty);
     }

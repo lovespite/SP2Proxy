@@ -39,7 +39,8 @@ public class ChannelManager : IChannelFactory
     {
         if (frame.ChannelId == 0)
         {
-            await Controller.ProcessCtlMessageInternalAsync(frame.Payload);
+            // 不要等待控制消息的处理完成，否则会阻塞数据帧的处理
+            _ = Controller.ProcessCtlMessageInternalAsync(frame.Payload);
             return;
         }
 
@@ -54,7 +55,12 @@ public class ChannelManager : IChannelFactory
     }
 
     private static long _globalCid = 1;
-    public static long NextCid() => Interlocked.Increment(ref _globalCid);
+    private static readonly ConcurrentQueue<long> _cidPool = new();
+    private static long NextCid()
+    {
+        if (_cidPool.TryDequeue(out var cid)) return cid;
+        return Interlocked.Increment(ref _globalCid);
+    }
 
     public Channel NewChannel(long cid)
     {
@@ -69,6 +75,7 @@ public class ChannelManager : IChannelFactory
     {
         if (_channels.TryRemove(channel.Cid, out _))
         {
+            _cidPool.Enqueue(channel.Cid); // 回收ID
             Console.WriteLine($"[ChnMan] Channel <{channel.Cid}> destroyed with code 0x{code:X}.");
         }
     }

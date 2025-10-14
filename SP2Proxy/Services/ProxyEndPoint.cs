@@ -30,7 +30,6 @@ public class ProxyEndPoint
         try
         {
             var cid = (long)msg.Data;
-            // var opt = msg.Get<string>("opt");
             var host = msg.Get<string>("host").Value;
             var port = msg.Get<int>("port").Value;
 
@@ -51,16 +50,17 @@ public class ProxyEndPoint
             var remoteStream = remoteClient.GetStream();
 
             // 双向转发
-            _ = Task.Run(async () =>
-            {
-                await channel.CopyToAsync(remoteStream);
-                remoteClient.Close();
-            });
-            _ = Task.Run(async () =>
-            {
-                await remoteStream.CopyToAsync(channel);
-                channel.Close();
-            });
+            //_ = Task.Run(async () =>
+            //{
+            //    await channel.CopyToAsync(remoteStream);
+            //});
+
+            //_ = Task.Run(async () =>
+            //{
+            //    await remoteStream.CopyToAsync(channel);
+            //});
+            _ = channel.CopyToAsync(remoteStream);
+            _ = remoteStream.CopyToAsync(channel);
 
         }
         catch (Exception ex)
