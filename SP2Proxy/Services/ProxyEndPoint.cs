@@ -34,7 +34,7 @@ public class ProxyEndPoint
             var port = msg.Get<int>("port").Value;
 
             var channel = _channelManager.Get(cid);
-            if (channel == null)
+            if (channel is null)
             {
                 Console.WriteLine($"[ProxyEndPoint] Channel not found: {cid}");
                 return;
@@ -47,21 +47,10 @@ public class ProxyEndPoint
 
             Console.WriteLine($"[ProxyEndPoint] Connected to {host}:{port}");
 
-            var remoteStream = remoteClient.GetStream();
+            var cstream = remoteClient.GetStream();
 
-            // 双向转发
-            //_ = Task.Run(async () =>
-            //{
-            //    await channel.CopyToAsync(remoteStream);
-            //});
-
-            //_ = Task.Run(async () =>
-            //{
-            //    await remoteStream.CopyToAsync(channel);
-            //});
-            _ = channel.CopyToAsync(remoteStream);
-            _ = remoteStream.CopyToAsync(channel);
-
+            _ = channel.Pipe(cstream);
+            _ = cstream.Pipe(channel);
         }
         catch (Exception ex)
         {

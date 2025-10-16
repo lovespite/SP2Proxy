@@ -1,8 +1,9 @@
+using SP2Proxy.Core;
+using SP2Proxy.Utils;
 using System.IO.Pipes;
 using System.Net;
 using System.Net.Sockets;
-using SP2Proxy.Core;
-using SP2Proxy.Utils;
+using System.Threading.Channels;
 using static SP2Proxy.Core.ControllerChannel;
 
 namespace SP2Proxy.Services;
@@ -99,17 +100,22 @@ public class HostServer
         await socksProxy.ProcessAsync();
     }
 
+    private static readonly byte[] HttpSuccessResponse = System.Text.Encoding.ASCII.GetBytes("HTTP/1.1 200 Connection established\r\n\r\n");
+
     private async Task ForwardConnectionAsync(TcpClient client, string host, int port, byte version)
     {
+
+        Core.Channel? channel = null;
+
         try
         {
             var msg = ControlMessage.Command(ControlMessage.Commands.Establish);
             var response = await _channelManager.Controller.CallRemoteProcAsync(msg);
             var cid = (long)response.Data;
+            channel = _channelManager.NewChannel(cid);
 
             if (cid == -1) throw new Exception("Failed to get channel ID from remote.");
 
-            var channel = _channelManager.NewChannel(cid);
 
             Console.WriteLine($"[Channel/Socket] {channel.Path} <{channel.Cid:x8}> chn. established for {host}:{port}.");
 
@@ -120,29 +126,29 @@ public class HostServer
 
             // 发送连接请求
             await _channelManager.Controller.CallRemoteProcAsync(msg);
-            var clientStream = client.GetStream();
-
-            var pipe = Task.WhenAll(
-                clientStream.CopyToAsync(channel),
-                channel.CopyToAsync(clientStream)
-            );
+            var cstream = client.GetStream();
 
             // 响应客户端（SOCKS5由S5Proxy处理，HTTP需要在这里响应）
             if (version == 0)
             {
-                var successResponse = System.Text.Encoding.ASCII.GetBytes("HTTP/1.1 200 Connection established\r\n\r\n");
-                await client.GetStream().WriteAsync(successResponse);
+                await cstream.WriteAsync(HttpSuccessResponse);
             }
 
-            await pipe;
+            await Task.WhenAll(
+                cstream.Pipe(channel), 
+                channel.Pipe(cstream)
+            );
 
             await channel.CloseAsync();
+
             Console.WriteLine($"[Channel/Socket] Pipe closed for {host}:{port}.");
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[HostServer] Forwarding failed for {host}:{port}. {ex.Message}");
             client.Close();
+            channel?.CloseAsync();
+
+            Console.WriteLine($"[HostServer] Forwarding failed for {host}:{port}. {ex.Message}");
         }
     }
 }

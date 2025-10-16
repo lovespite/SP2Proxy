@@ -13,6 +13,8 @@ public class ControllerChannel : Channel
     private readonly IChannelFactory _factory;
     private readonly ConcurrentDictionary<long, TaskCompletionSource<ControlMessage>> _pendingRpcs = new();
 
+    public ConnectRequestHandler? OnConnectRequest { get; set; }
+
     public ControllerChannel(SerialPort2 host, IChannelFactory factory) : base(0, host, (c, code) => { })
     {
         _factory = factory;
@@ -63,8 +65,6 @@ public class ControllerChannel : Channel
 
         SendCtlMessage(response);
     }
-
-    public ConnectRequestHandler? OnConnectRequest { get; set; }
 
     public async Task<ControlMessage> CallRemoteProcAsync(ControlMessage msg, CancellationToken ct = default)
     {

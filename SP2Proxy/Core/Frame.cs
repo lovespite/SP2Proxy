@@ -26,7 +26,12 @@ public record Frame
     public Memory<byte> Payload { get; set; } = Memory<byte>.Empty;
     public FrameState State { get; set; } = FrameState.Idle;
 
-    public static Frame Empty(long cid) => new() { ChannelId = cid, Payload = Memory<byte>.Empty };
+    public static Frame Empty(long cid)
+    {
+        return Build(Memory<byte>.Empty, cid);
+    }
+
+    public string Utf8Text => System.Text.Encoding.UTF8.GetString(Payload.Span);
 
     public unsafe static Frame Build(ReadOnlyMemory<byte> chunk, long cid)
     {

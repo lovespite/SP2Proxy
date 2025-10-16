@@ -88,9 +88,6 @@ public class SerialPort2 : IDisposable
                 int bytesRead = await _baseport.BaseStream.ReadAsync(incomingBuffer, _cancellationTokenSource.Token);
                 if (bytesRead <= 0) continue;
 
-                //var frameBytes = _parser.Parse(incomingBuffer.Span[..bytesRead]);
-                //_frameBytes.Enqueue(frameBytes);
-
                 await _pipe.Writer.WriteAsync(incomingBuffer[..bytesRead], _cancellationTokenSource.Token);
             }
             catch (OperationCanceledException)
@@ -103,11 +100,10 @@ public class SerialPort2 : IDisposable
                 Console.WriteLine($"[PPH] I/O operation aborted on {Path}: {ex.Message}");
                 break;
             }
-            catch (IOException ex)
+            catch (IOException)
             {
                 // 检查串口状态
                 if (!_baseport.IsOpen) break;
-                else Console.WriteLine($"[PPH] I/O error on {Path}: {ex.Message}");
             }
             catch (Exception ex)
             {
@@ -122,13 +118,16 @@ public class SerialPort2 : IDisposable
 
     private async Task ParseFramesAsync()
     {
-        await foreach (var frame in _pipe.ParseFramesAsync())
+        await foreach (var frameData in _pipe.ParseFramesAsync())
         {
             if (_cancellationTokenSource.IsCancellationRequested) break;
 
             try
             {
-                _incomingQueue.Enqueue(Frame.Parse(frame.Span));
+                var frame = Frame.Parse(frameData.Span);
+
+                _incomingQueue.Enqueue(frame);
+
                 ++FramesIn;
             }
             catch (Exception ex)
@@ -139,31 +138,6 @@ public class SerialPort2 : IDisposable
 
         Console.WriteLine($"[PPH] Parse task ended for {Path}");
     }
-
-    //private async Task ParseFramesAsync()
-    //{
-    //    while (!_cancellationTokenSource.IsCancellationRequested)
-    //    {
-    //        if (!_frameBytes.TryDequeue(out var frames))
-    //        {
-    //            await Task.Delay(1); // 队列为空时短暂等待
-    //            continue;
-    //        }
-
-    //        foreach (var frame in frames)
-    //        {
-    //            try
-    //            {
-    //                _incomingQueue.Enqueue(Frame.Parse(frame));
-    //                ++FramesIn;
-    //            }
-    //            catch (Exception ex)
-    //            {
-    //                Console.WriteLine($"[PPH] Error parsing frame on {Path}: {ex.Message}");
-    //            }
-    //        }
-    //    }
-    //}
 
     private async Task DispatchFramesAsync()
     {
@@ -211,14 +185,14 @@ public class SerialPort2 : IDisposable
 
                 // 发送数据
                 await _baseport.BaseStream.WriteAsync(outgoingBuffer[..size], _cancellationTokenSource.Token);
-                // await _baseport.BaseStream.FlushAsync(_cancellationTokenSource.Token);
 
                 TrafficOut += (ulong)size;
                 ++FramesOut;
             }
-            catch (IOException)
+            catch (IOException ex)
             {
                 if (!_baseport.IsOpen) break;
+                Console.WriteLine($"[PPH] I/O error on {Path} during send: {ex.Message}");
             }
             catch (OperationCanceledException)
             {

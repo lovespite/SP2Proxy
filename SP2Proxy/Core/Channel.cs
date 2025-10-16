@@ -22,9 +22,16 @@ public class Channel : DuplexStream
         _onClose = onClose;
     }
 
+    private void ThrowIfDisposed()
+    {
+        ObjectDisposedException.ThrowIf(!IsAlive, this);
+    }
+
     // 优先实现这个 Memory<byte> 的重载
     public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
     {
+        ThrowIfDisposed();
+
         var result = await _incomingData.Reader.ReadAsync(cancellationToken);
         var readableBuffer = result.Buffer;
 
@@ -56,18 +63,22 @@ public class Channel : DuplexStream
     // 将数据分片、打包成帧并发送 
     public override async Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
     {
+        ThrowIfDisposed();
+
         var dataToWrite = buffer.AsMemory(offset, count);
         var currentOffset = 0;
 
         while (currentOffset < dataToWrite.Length)
         {
+            ThrowIfDisposed();
+
             var chunkSize = Math.Min(Frame.MaxTransmitionUnitSize, dataToWrite.Length - currentOffset);
             var chunk = dataToWrite.Slice(currentOffset, chunkSize);
 
             var frame = Frame.Build(chunk, Cid);
 
-            // _host.EnqueueOut(frame);
             await _host.EnqueueOutAsync(frame, cancellationToken);
+
             currentOffset += chunkSize;
         }
 
@@ -79,10 +90,22 @@ public class Channel : DuplexStream
     {
         if (data.IsEmpty)
         {
-            await _incomingData.Writer.CompleteAsync();
+            IsAlive = false;
+            _ = CloseInternalAsync();
             return;
         }
+
         await _incomingData.Writer.WriteAsync(data);
+    }
+
+    private async Task CloseInternalAsync()
+    {
+        await _incomingData.Reader.CompleteAsync();
+        await _incomingData.Writer.CompleteAsync();
+
+        _onClose(this, 0); // 触发关闭回调
+
+        base.Close();
     }
 
     public async Task CloseAsync()
@@ -92,12 +115,22 @@ public class Channel : DuplexStream
 
         // 发送一个空帧来通知对方信道已关闭 
         _host.EnqueueOut(Frame.Empty(Cid));
-        _onClose(this, 0); // 触发关闭回调
 
-        await _incomingData.Writer.CompleteAsync();
-        await _incomingData.Reader.CompleteAsync();
+        await CloseInternalAsync();
+    }
 
-        base.Close();
+    public override async ValueTask DisposeAsync()
+    {
+        if (IsAlive) await CloseAsync();
+
+        await base.DisposeAsync();
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (IsAlive) _ = CloseAsync();
+
+        base.Dispose(disposing);
     }
 
     // 其他必须重写的方法
@@ -123,4 +156,30 @@ public interface IChannelFactory
 {
     Channel NewChannel(long cid);
     Channel NewChannel();
+}
+
+
+public static class ChannelExtensions
+{
+    public static async Task Pipe(this Stream channel, Stream stream)
+    {
+        var buffer = ArrayPool<byte>.Shared.Rent(8192);
+
+        try
+        {
+            var mem = buffer.AsMemory();
+
+            while (true)
+            {
+                var bytesRead = await channel.ReadAsync(mem);
+                if (bytesRead == 0) break; // 流结束
+
+                await stream.WriteAsync(mem[..bytesRead]);
+            }
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(buffer);
+        }
+    } 
 }
